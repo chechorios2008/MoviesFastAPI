@@ -1,12 +1,25 @@
-from fastapi import FastAPI, Body, requests, Path, Query
+from fastapi import FastAPI, Body, requests, Path, Query, Request, HTTPException, Depends
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 from typing import Optional, List
-
+from jwt_manager import create_token, validate_token
+from fastapi.security import HTTPBearer
 
 app = FastAPI()
 app.title = "My aplication with FastAPI"
 app.version = "0.0.1"
+
+#función asincrona async
+class JWTBearer(HTTPBearer):
+    async def __call__(self, request: Request):
+        auth = await super().__call__(request)
+        data = validate_token(auth.credentials)
+        if data['email'] != "admin@gmail.com":
+            raise HTTPException(status_code=403, detail="Las credenciales son invalidas.")
+
+class User(BaseModel):
+    email: str
+    password: str
 
 class Movie(BaseModel):
     id: Optional[int] = None
@@ -62,12 +75,21 @@ movies = [
 def message():
     return HTMLResponse ("<h2> Hello myt Best friend, in this page there are amazin movies. </h2>")
 
+@app.post('/login',
+          tags=['Auth'],
+          summary="Authentication Module")
+def login(user: User):
+    if user.email == "admin@gmail.com" and user.password == "admin":
+        token: str = create_token(user.dict())
+        return JSONResponse(status_code=200, content=token)
+
 @app.get(
     path='/movies',
     tags=['Movies'],
     summary="Show all movies",
     response_model=List[Movie],
-    status_code=200)
+    status_code=200,
+    dependencies= [Depends(JWTBearer())])
 def get_movies() -> List[Movie]:
     return JSONResponse(status_code=200,content=movies) 
 
@@ -128,4 +150,4 @@ def delete_movie(id: int) -> dict:
     for i in movies:
         if i['id'] == id:
             movies.remove(i)
-            return JSONResponse(status_code=200,content={"message":"Your movie has been DELETED!!!"})          
+            return JSONResponse(status_code=200,content={"message":"Your movie has been DELETED!!!"})
